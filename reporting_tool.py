@@ -10,28 +10,22 @@ DBNAME = 'news'
 def mp_articles():
     """Print out articles sorted by access."""
 
-    db = psycopg2.connect(database=DBNAME)
-    c = db.cursor()
     query = '''
               SELECT title, count(*) AS num
               FROM log JOIN articles
               ON path LIKE CONCAT('/article/', slug)
-              GROUP BY title ORDER BY num DESC LIMIT 15
+              GROUP BY title ORDER BY num DESC LIMIT 3
             '''
-    c.execute(query)
-    result = c.fetchall()
+    result = run_query(query)
     print '******Most popular articles******'
-    for i in result:
-        print '"' + i[0] + '"' + '--' + str(i[1]) + ' views'
+    for title, viewCount in result:
+        print("\"{}\" -- {} views").format(title, viewCount)
     print '*********************************'
-    db.close()
 
 
 def mp_authors():
     """Print out authors sorted by popularity."""
 
-    db = psycopg2.connect(database=DBNAME)
-    c = db.cursor()
     query = '''
               SELECT name, num FROM authors
               JOIN (SELECT author, count(*) AS num
@@ -40,24 +34,19 @@ def mp_authors():
               GROUP BY author ORDER BY num DESC) AS subq
               ON authors.id = subq.author
             '''
-    c.execute(query)
-    result = c.fetchall()
+    result = run_query(query)
     print '******Most popular authors******'
-    for i in result:
-        print i[0] + '--' + str(i[1]) + ' views'
+    for author, viewCount in result:
+        print("{} -- {} views").format(author, viewCount)
     print '********************************'
-    db.close()
 
 
 def error_report():
     """Print out dates with too much errors."""
 
-    db = psycopg2.connect(database=DBNAME)
-    c = db.cursor()
     query = '''
               SELECT * from
-              (SELECT to_char(a.date, 'Month DD, YYYY') AS date,
-              (round(((a.num*100.0)::numeric/b.num),2)) AS percentage
+              (SELECT a.date, ((a.num*100.0)::numeric/b.num) AS percentage
               FROM (SELECT cast(time as date) AS date, count(*) AS num
               FROM log WHERE status!='200 OK' GROUP BY date) AS a
               JOIN (SELECT cast(time as date) AS date, count(*) AS num
@@ -65,15 +54,30 @@ def error_report():
               ON a.date=b.date ORDER BY percentage DESC) AS c
               WHERE percentage>1
             '''
-    c.execute(query)
-    result = c.fetchall()
+    result = run_query(query)
     print '**********Saddest days**********'
-    for i in result:
-        print i[0] + ' -- ' + str(i[1]) + '% errors'
+    for date, error in result:
+        print("{0:%B %d, %Y} -- {1:.2f}% errors".format(date, error))
     print '********************************'
-    db.close()
 
 
-mp_articles()
-mp_authors()
-error_report()
+def run_query(query):
+    """Excute a query and return the result"""
+    try:
+        db = psycopg2.connect(database=DBNAME)
+        c = db.cursor()
+        c.execute(query)
+        result = c.fetchall()
+        db.close()
+        return result
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        if c is not None:
+            db.close()
+
+
+if __name__ == '__main__':
+    mp_articles()
+    mp_authors()
+    error_report()
